@@ -12,11 +12,18 @@
 
   var testingExposeCycleCount = global.testingExposeCycleCount;
 
+  var ignoreObjectObserve = false;
+  var objectObserveDetected = false;
   // Detect and do basic sanity checking on Object/Array.observe.
-  function detectObjectObserve() {
+  function hasObserve() {
     if (typeof Object.observe !== 'function' ||
-        typeof Array.observe !== 'function') {
+        typeof Array.observe !== 'function' ||
+        ignoreObjectObserve) {
       return false;
+    }
+
+    if (objectObserveDetected) {
+      return true;
     }
 
     var records = [];
@@ -50,10 +57,8 @@
     Object.unobserve(test, callback);
     Array.unobserve(arr, callback);
 
-    return true;
+    return objectObserveDetected = true;
   }
-
-  var hasObserve = detectObjectObserve();
 
   function detectEval() {
     // Don't test for eval if we're running in a Chrome App environment.
@@ -514,7 +519,7 @@
     return true;
   }
 
-  var runEOM = hasObserve ? (function(){
+  var runEOM = hasObserve() ? (function(){
     return function(fn) {
       return Promise.resolve().then(fn);
     };
@@ -765,7 +770,7 @@
     }
   };
 
-  var collectObservers = !hasObserve;
+  var collectObservers = !hasObserve();
   var allObservers;
   Observer._allObserversCount = 0;
 
@@ -793,7 +798,7 @@
     if (runningMicrotaskCheckpoint)
       return;
 
-    if (!collectObservers)
+    if (hasObserve())
       return;
 
     runningMicrotaskCheckpoint = true;
@@ -845,7 +850,7 @@
     arrayObserve: false,
 
     connect_: function(callback, target) {
-      if (hasObserve) {
+      if (hasObserve()) {
         this.directObserver_ = getObservedObject(this, this.value_,
                                                  this.arrayObserve);
       } else {
@@ -867,7 +872,7 @@
     check_: function(changeRecords, skipChanges) {
       var diff;
       var oldValues;
-      if (hasObserve) {
+      if (hasObserve()) {
         if (!changeRecords)
           return false;
 
@@ -882,7 +887,7 @@
       if (diffIsEmpty(diff))
         return false;
 
-      if (!hasObserve)
+      if (!hasObserve())
         this.oldObject_ = this.copyObject(this.value_);
 
       this.report_([
@@ -898,7 +903,7 @@
     },
 
     disconnect_: function() {
-      if (hasObserve) {
+      if (hasObserve()) {
         this.directObserver_.close();
         this.directObserver_ = undefined;
       } else {
@@ -910,7 +915,7 @@
       if (this.state_ != OPENED)
         return;
 
-      if (hasObserve)
+      if (hasObserve())
         this.directObserver_.deliver(false);
       else
         dirtyCheck(this);
@@ -944,7 +949,7 @@
 
     check_: function(changeRecords) {
       var splices;
-      if (hasObserve) {
+      if (hasObserve()) {
         if (!changeRecords)
           return false;
         splices = projectArraySplices(this.value_, changeRecords);
@@ -956,7 +961,7 @@
       if (!splices || !splices.length)
         return false;
 
-      if (!hasObserve)
+      if (!hasObserve())
         this.oldObject_ = this.copyObject(this.value_);
 
       this.report_([splices]);
@@ -994,7 +999,7 @@
     },
 
     connect_: function() {
-      if (hasObserve)
+      if (hasObserve())
         this.directObserver_ = getObservedSet(this, this.object_);
 
       this.check_(undefined, true);
@@ -1044,7 +1049,7 @@
     __proto__: Observer.prototype,
 
     connect_: function() {
-      if (hasObserve) {
+      if (hasObserve()) {
         var object;
         var needsDirectObserver = false;
         for (var i = 0; i < this.observed_.length; i += 2) {
@@ -1226,7 +1231,8 @@
   var expectedRecordTypes = {
     add: true,
     update: true,
-    delete: true
+    delete: true,
+    reconfigure: true
   };
 
   function diffObjectFromChangeRecords(object, changeRecords, oldValues) {
@@ -1244,7 +1250,7 @@
       if (!(record.name in oldValues))
         oldValues[record.name] = record.oldValue;
 
-      if (record.type == 'update')
+      if (record.type == 'update' || record.type == 'reconfigure')
         continue;
 
       if (record.type == 'add') {
@@ -1703,7 +1709,11 @@
   expose.Observer = Observer;
   expose.Observer.runEOM_ = runEOM;
   expose.Observer.observerSentinel_ = observerSentinel; // for testing.
-  expose.Observer.hasObjectObserve = hasObserve;
+  expose.Observer.hasObjectObserve = hasObserve();
+  expose.Observer.ignoreObjectObserve = function (value) {
+      ignoreObjectObserve = value;
+  };
+
   expose.ArrayObserver = ArrayObserver;
   expose.ArrayObserver.calculateSplices = function(current, previous) {
     return arraySplice.calculateSplices(current, previous);
@@ -1715,5 +1725,6 @@
   expose.CompoundObserver = CompoundObserver;
   expose.Path = Path;
   expose.ObserverTransform = ObserverTransform;
+
 
 })(typeof global !== 'undefined' && global && typeof module !== 'undefined' && module ? global : this || window);
