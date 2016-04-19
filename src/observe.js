@@ -770,15 +770,11 @@
     }
   };
 
-  var collectObservers = !hasObserve();
   var allObservers = [];
   Observer._allObserversCount = 0;
 
   function addToAll(observer) {
     Observer._allObserversCount++;
-    if (!collectObservers)
-      return;
-
     allObservers.push(observer);
   }
 
@@ -828,11 +824,9 @@
     runningMicrotaskCheckpoint = false;
   };
 
-  if (collectObservers) {
     global.Platform.clearObservers = function() {
       allObservers = [];
     };
-  }
 
   function ObjectObserver(object) {
     Observer.call(this);
